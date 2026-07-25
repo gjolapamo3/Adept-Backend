@@ -186,29 +186,65 @@ Funds will lock in Escrow.`;
 });
 
 // =============================================================================
-// 2. MONNIFY / PAYSTACK BANK ESCROW WEBHOOK
-// =============================================================================
-app.post('/api/v1/escrow/webhook', (req, res) => {
-  const { eventType, responseBody } = req.body;
+// // 2. MONNIFY / PAYSTACK BANK ESCROW WEBHOOK
+app.post('/api/monnify/webhook', verifyMonnifyWebhook, async (req, res) => {
+  const { eventType, eventData } = req.body;
 
-  // Handle successful inbound payment notification from bank
-  if (eventType === 'SUCCESSFUL_TRANSACTION' || req.body.event === 'charge.success') {
-    const rfqId = responseBody?.paymentReference || req.body.data?.reference;
-    const paidAmount = responseBody?.amountPaid || req.body.data?.amount / 100;
+  try {
+    if (eventType === 'SUCCESSFUL_TRANSACTION') {
+      const { 
+        transactionReference, 
+        paymentReference, 
+        amountPaid, 
+        settlementAmount, 
+        customer 
+      } = eventData;
 
-    console.log(`⚡ INBOUND PAYMENT VERIFIED: ₦${paidAmount} for Ref: ${rfqId}`);
+      // -------------------------------------------------------------
+      // 1. IDEMPOTENCY CHECK: Have we already processed this reference?
+      // -------------------------------------------------------------
+      const existingTransaction = await Transaction.findOne({
+        $or: [
+          { reference: paymentReference },
+          { transactionReference: transactionReference }
+        ]
+      });
 
-    // Update database status to ESCROW_LOCKED
-    const rfqIndex = db.rfqs.findIndex(r => r.id === rfqId || r.accountNumber === responseBody?.accountDetails?.accountNumber);
-    if (rfqIndex !== -1) {
-      db.rfqs[rfqIndex].status = 'ESCROW_LOCKED';
-      console.log(`🔒 ESCROW LOCKED FOR ${db.rfqs[rfqIndex].id}. Triggering Factory Dispatch Notice to Dangote/Blender...`);
+      if (existingTransaction) {
+        console.warn(`[Idempotency Safeguard] Duplicate webhook ignored for Ref: ${paymentReference}`);
+        
+        // Return 200 OK immediately so Monnify stops retrying!
+        return res.status(200).json({ 
+          status: 'success', 
+          message: 'Duplicate webhook event already processed' 
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 2. FIRST-TIME PROCESSING: Save transaction to database
+      // -------------------------------------------------------------
+      const newTransaction = await Transaction.create({
+        reference: paymentReference,
+        transactionReference: transactionReference,
+        customerPhone: customer?.phoneNumber || 'N/A',
+        amount: amountPaid,
+        type: 'Collection',
+        status: 'SUCCESS',
+        date: new Date()
+      });
+
+      console.log(`[Settlement Confirmed] Ref: ${paymentReference} | Amount: ₦${amountPaid}`);
+
+      // Perform your wallet credit or business settlement logic here
     }
 
-    return res.status(200).json({ status: 'SUCCESS', message: 'Escrow Funds Locked' });
-  }
+    // Always acknowledge receipt to Monnify with 200 OK
+    return res.status(200).json({ status: 'success', message: 'Webhook processed' });
 
-  res.status(200).json({ status: 'IGNORED' });
+  } catch (err) {
+    console.error('Error handling Monnify webhook event:', err);
+    return res.status(500).json({ status: 'error', message: 'Internal server error processing webhook' });
+  }
 });
 
 // =============================================================================
