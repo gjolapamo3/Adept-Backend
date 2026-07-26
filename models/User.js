@@ -1,47 +1,21 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-    minlength: 3
+  companyName: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password: { type: String, required: true },
+  role: { 
+    type: String, 
+    enum: ['BUYER', 'SUPPLIER', 'ADMIN'], 
+    default: 'BUYER' 
   },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true,
-    match: /.+\@.+\..+/
+  phone: { type: String, required: true },
+  address: {
+    street: String,
+    state: String,
+    country: { type: String, default: 'Nigeria' }
   },
-  password: {
-    type: String,
-    required: true,
-    minlength: 6
-  },
-  profile: {
-    firstName: String,
-    lastName: String,
-    avatar: String,
-    bio: String
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
-});
+  isVerified: { type: Boolean, default: false }
+}, { timestamps: true });
 
-// Update the updatedAt field before saving
-userSchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
-  next();
-});
-
-const User = mongoose.model('User', userSchema);
-
-module.exports = User;
+module.exports = mongoose.model('User', userSchema);
