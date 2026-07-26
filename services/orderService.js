@@ -9,7 +9,7 @@ const Product = require('../models/Product');
 const fulfillOrderPayment = async (paymentData) => {
   const { paymentReference, orderReference, amountPaid, paymentMethod, rawPayload } = paymentData;
 
-  // 1. Record or update Transaction
+  // 1. Record or update the Transaction log
   await Transaction.findOneAndUpdate(
     { paymentReference },
     {
@@ -23,23 +23,23 @@ const fulfillOrderPayment = async (paymentData) => {
     { upsert: true, new: true }
   );
 
-  // 2. Find associated Order
+  // 2. Find the associated Order
   const order = await Order.findOne({ orderReference }).populate('items.product');
 
   if (!order) {
     throw new Error(`Order with reference ${orderReference} not found.`);
   }
 
-  // Idempotent safeguard: skip stock reduction if already paid
+  // Idempotent safeguard: prevent double stock deduction if already processed
   if (order.status === 'PAID' || order.status === 'PROCESSING' || order.status === 'FULFILLED') {
     return { status: 'ALREADY_PROCESSED', order };
   }
 
-  // 3. Mark Order as PAID
+  // 3. Update Order status to PAID
   order.status = 'PAID';
   await order.save();
 
-  // 4. Auto-deduct inventory stock safely
+  // 4. Auto-deduct inventory stock atomically using $inc
   for (const item of order.items) {
     await Product.findByIdAndUpdate(
       item.product._id,
