@@ -249,7 +249,11 @@ app.post('/api/v1/rfqs/create', async (req, res) => {
   res.json({ success: true, data: newRFQ });
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`🚀 Adept Processing Nig LTD Backend Engine Running on Port ${PORT}`);
-});
+// Start Server (skip during tests)
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Adept Processing Nig LTD Backend Engine Running on Port ${PORT}`);
+  });
+}
+
+module.exports = app;
