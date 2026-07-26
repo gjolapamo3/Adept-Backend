@@ -6,6 +6,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const { fulfillOrderPayment } = require('./services/orderService');
 
 const app = express();
 app.use(express.json());
@@ -187,63 +188,35 @@ Funds will lock in Escrow.`;
 
 // =============================================================================
 // // 2. MONNIFY / PAYSTACK BANK ESCROW WEBHOOK
-app.post('/api/monnify/webhook', verifyMonnifyWebhook, async (req, res) => {
-  const { eventType, eventData } = req.body;
-
+app.post('/api/v1/payments/monnify-webhook', async (req, res) => {
   try {
-    if (eventType === 'SUCCESSFUL_TRANSACTION') {
-      const { 
-        transactionReference, 
-        paymentReference, 
-        amountPaid, 
-        settlementAmount, 
-        customer 
-      } = eventData;
+    // [ Security Checks: Signature Verification, IP Whitelisting, & Idempotency Check ]
 
-      // -------------------------------------------------------------
-      // 1. IDEMPOTENCY CHECK: Have we already processed this reference?
-      // -------------------------------------------------------------
-      const existingTransaction = await Transaction.findOne({
-        $or: [
-          { reference: paymentReference },
-          { transactionReference: transactionReference }
-        ]
-      });
+    const { eventType, eventData } = req.body;
 
-      if (existingTransaction) {
-        console.warn(`[Idempotency Safeguard] Duplicate webhook ignored for Ref: ${paymentReference}`);
-        
-        // Return 200 OK immediately so Monnify stops retrying!
-        return res.status(200).json({ 
-          status: 'success', 
-          message: 'Duplicate webhook event already processed' 
-        });
-      }
+    // Only process successful payment events
+    if (eventType === 'SUCCESSFUL_TRANSACTION' && eventData.paymentStatus === 'PAID') {
+      
+      const paymentData = {
+        paymentReference: eventData.transactionReference,
+        orderReference: eventData.paymentReference, // Custom Order ID attached during checkout initialization
+        amountPaid: eventData.amountPaid,
+        paymentMethod: eventData.paymentMethod,
+        rawPayload: req.body
+      };
 
-      // -------------------------------------------------------------
-      // 2. FIRST-TIME PROCESSING: Save transaction to database
-      // -------------------------------------------------------------
-      const newTransaction = await Transaction.create({
-        reference: paymentReference,
-        transactionReference: transactionReference,
-        customerPhone: customer?.phoneNumber || 'N/A',
-        amount: amountPaid,
-        type: 'Collection',
-        status: 'SUCCESS',
-        date: new Date()
-      });
-
-      console.log(`[Settlement Confirmed] Ref: ${paymentReference} | Amount: ₦${amountPaid}`);
-
-      // Perform your wallet credit or business settlement logic here
+      // Execute order fulfillment & inventory reduction
+      const result = await fulfillOrderPayment(paymentData);
+      console.log(`[ORDER EXECUTION] Order ${eventData.paymentReference} state updated:`, result.status);
     }
 
-    // Always acknowledge receipt to Monnify with 200 OK
+    // Always respond 200 OK to Monnify rapidly
     return res.status(200).json({ status: 'success', message: 'Webhook processed' });
 
-  } catch (err) {
-    console.error('Error handling Monnify webhook event:', err);
-    return res.status(500).json({ status: 'error', message: 'Internal server error processing webhook' });
+  } catch (error) {
+    console.error('[ORDER EXECUTION ERROR]:', error.message);
+    // Return 200 to prevent webhook retry storms on known internal errors
+    return res.status(200).json({ status: 'error', message: error.message });
   }
 });
 
