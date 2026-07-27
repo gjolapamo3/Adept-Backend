@@ -105,6 +105,51 @@ const db = {
   ],
 };
 
+const marketplaceStreamClients = new Set();
+
+const MARKETPLACE_EVENT_NAME = 'market_update';
+const STREAM_HEARTBEAT_MS = 25000;
+const STREAM_BROADCAST_MS = 10000;
+
+const buildMarketplaceSnapshot = () => {
+  const openRfqCount = db.rfqs.filter((rfq) => rfq.status === 'OPEN_FOR_ESCROW').length;
+
+  return {
+    timestamp: new Date().toISOString(),
+    status: 'live',
+    metrics: {
+      totalRfqs: db.rfqs.length,
+      openForEscrow: openRfqCount,
+    },
+    rfqs: db.rfqs.map((rfq) => ({
+      id: rfq.id,
+      coop: rfq.coop,
+      product: rfq.product,
+      qty: rfq.qty,
+      total: rfq.total,
+      status: rfq.status,
+    })),
+  };
+};
+
+const sendSseEvent = (res, eventName, payload) => {
+  res.write(`event: ${eventName}\n`);
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+};
+
+const broadcastMarketplaceUpdate = () => {
+  if (marketplaceStreamClients.size === 0) {
+    return;
+  }
+
+  const payload = buildMarketplaceSnapshot();
+  for (const client of marketplaceStreamClients) {
+    sendSseEvent(client, MARKETPLACE_EVENT_NAME, payload);
+  }
+};
+
+setInterval(broadcastMarketplaceUpdate, STREAM_BROADCAST_MS);
+
 // Authenticate with Monnify and return an access token.
 async function getMonnifyAccessToken() {
   try {
@@ -287,7 +332,40 @@ Funds will lock in Escrow.`;
 });
 
 // =============================================================================
-// 4. MONNIFY / PAYSTACK BANK ESCROW WEBHOOK
+// 4. MARKETPLACE SSE FEED
+// =============================================================================
+app.get('/api/v1/marketplace/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  marketplaceStreamClients.add(res);
+
+  sendSseEvent(res, 'connected', {
+    status: 'live',
+    message: 'Live Market Feed connected',
+    timestamp: new Date().toISOString(),
+  });
+  sendSseEvent(res, MARKETPLACE_EVENT_NAME, buildMarketplaceSnapshot());
+
+  const heartbeatId = setInterval(() => {
+    res.write(`: heartbeat ${Date.now()}\n\n`);
+  }, STREAM_HEARTBEAT_MS);
+
+  req.on('close', () => {
+    clearInterval(heartbeatId);
+    marketplaceStreamClients.delete(res);
+    res.end();
+  });
+});
+
+// =============================================================================
+// 5. MONNIFY / PAYSTACK BANK ESCROW WEBHOOK
 // =============================================================================
 app.post('/api/v1/payments/monnify-webhook', verifyMonnifyIP, async (req, res) => {
   try {
@@ -314,7 +392,7 @@ app.post('/api/v1/payments/monnify-webhook', verifyMonnifyIP, async (req, res) =
 });
 
 // =============================================================================
-// 5. REST API FOR WEB DASHBOARD & MOBILE FIELD APP
+// 6. REST API FOR WEB DASHBOARD & MOBILE FIELD APP
 // =============================================================================
 app.get('/api/v1/rfqs', (req, res) => {
   res.json({ success: true, data: db.rfqs });
