@@ -72,67 +72,48 @@ async function getMonnifyAccessToken() {
 }
 
 // Generate Dynamic NIBSS Virtual Account for Escrow
-async function generateEscrowVirtualAccount(rfqId, customerName, amount) {
-  try {
-    const token = await getMonnifyAccessToken();
-
-    if (!token) {
-      return {
-        success: false,
-        message: 'Unable to authenticate with Monnify',
-        accountNumber: null,
-        bankName: null,
-      };
-    }
-
-    const response = await axios.post(
-      `${MONNIFY_BASE_URL}/api/v2/bank-transfer/reserved-accounts`,
-      {
-        accountReference: rfqId,
-        accountName: `Adept Escrow - ${customerName}`,
-        currencyCode: 'NGN',
-        contractCode: MONNIFY_CONTRACT_CODE,
-        customerEmail: `coop_${rfqId.toLowerCase()}@adeptprocessing.ng`,
-        customerName,
-        getAllAvailableBanks: false,
-        preferredBanks: ['035'],
-      },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    const responseBody = response?.data?.responseBody;
-    const account = responseBody?.accounts?.[0];
-    const accountNumber = account?.accountNumber || responseBody?.accountNumber || null;
-    const bankName = account?.bankName || responseBody?.bankName || null;
-
-    if (!accountNumber) {
-      return {
-        success: false,
-        message: response?.data?.responseMessage || 'Monnify did not return an account number',
-        accountNumber: null,
-        bankName: null,
-      };
-    }
-
-    return {
-      success: true,
-      message: 'Virtual account created',
-      accountNumber,
-      bankName: bankName || 'Wema Bank',
-      amount,
-    };
-  } catch (error) {
-    console.error('Virtual Account Creation Error:', error?.response?.data || error?.message || error);
-    return {
-      success: false,
-      message:
-        error?.response?.data?.responseMessage ||
-        error?.message ||
-        'Monnify reserved account creation failed',
-      accountNumber: null,
-      bankName: null,
-    };
+async function generateEscrowVirtualAccount(accountDetails) {
+  const token = await getMonnifyAccessToken();
+  if (!token) {
+    throw new Error('Failed to obtain Monnify access token.');
   }
+
+  const response = await axios.post(
+    `${MONNIFY_BASE_URL}/api/v2/bank-transfer/reserved-accounts`,
+    accountDetails,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const resBody = response?.data?.responseBody || {};
+  const accounts = Array.isArray(resBody.accounts) ? resBody.accounts : [];
+
+  // Primary account from accounts[] (Monnify v2)
+  const primary = accounts[0] || {};
+
+  // Fallback chain in case accounts[] is missing/empty
+  const accountNumber = primary.accountNumber || resBody.accountNumber || null;
+  const bankName = primary.bankName || resBody.bankName || null;
+  const bankCode = primary.bankCode || resBody.bankCode || null;
+  const accountName = primary.accountName || resBody.accountName || null;
+
+  return {
+    reservationReference: resBody.reservationReference || null,
+    accountReference: resBody.accountReference || null,
+    accountName,
+    accountNumber,
+    bankName,
+    bankCode,
+    allAccounts: accounts.map((acc) => ({
+      accountNumber: acc?.accountNumber || null,
+      bankName: acc?.bankName || null,
+      bankCode: acc?.bankCode || null,
+      accountName: acc?.accountName || null,
+    })),
+  };
 }
 
 // =============================================================================
@@ -185,30 +166,45 @@ Total Value: N${estimatedTotal.toLocaleString()}
       const newRfqId = `RFQ-00${db.rfqs.length + 44}`;
       const totalAmount = qty * 735000;
 
-      const vAcc = await generateEscrowVirtualAccount(newRfqId, `USSD Node (${phoneNumber})`, totalAmount);
-      if (!vAcc?.success || !vAcc?.accountNumber) {
-        console.error('Virtual Account Generation Failed:', vAcc?.message || 'Unknown error');
-        response = 'END Unable to create escrow account at the moment. Please try again later.';
-      } else {
-        const newRFQ = {
-          id: newRfqId,
-          coop: `USSD Order (${phoneNumber})`,
-          product: 'Custom NPK 20:10:10',
-          qty,
-          total: totalAmount,
-          status: 'OPEN_FOR_ESCROW',
-          phone: phoneNumber,
-          accountNumber: vAcc.accountNumber,
-        };
+      try {
+        const vAcc = await generateEscrowVirtualAccount({
+          accountReference: newRfqId,
+          accountName: `Adept Escrow - USSD Node (${phoneNumber})`,
+          currencyCode: 'NGN',
+          contractCode: MONNIFY_CONTRACT_CODE,
+          customerEmail: `ussd_${newRfqId.toLowerCase()}@adeptprocessing.ng`,
+          customerName: `USSD Node (${phoneNumber})`,
+          getAllAvailableBanks: false,
+          preferredBanks: ['035'],
+        });
 
-        db.rfqs.push(newRFQ);
+        if (!vAcc?.accountNumber) {
+          console.error('Virtual Account Generation Failed:', vAcc?.bankName || 'Unknown error');
+          response = 'END Unable to create escrow account at the moment. Please try again later.';
+        } else {
+          const newRFQ = {
+            id: newRfqId,
+            coop: `USSD Order (${phoneNumber})`,
+            product: 'Custom NPK 20:10:10',
+            qty,
+            total: totalAmount,
+            status: 'OPEN_FOR_ESCROW',
+            phone: phoneNumber,
+            accountNumber: vAcc.accountNumber,
+          };
 
-        response = `END CONTRACT ISSUED!
+          db.rfqs.push(newRFQ);
+
+          response = `END CONTRACT ISSUED!
 ID: ${newRfqId}
 Pay N${totalAmount.toLocaleString()} to:
 Bank: ${vAcc.bankName}
 Acc No: ${vAcc.accountNumber}
 Funds will lock in Escrow.`;
+        }
+      } catch (error) {
+        console.error('USSD Order Processing Error:', error?.message || error);
+        response = 'END An error occurred processing your order. Please try again later.';
       }
     } else {
       response = 'END Order Cancelled.';
@@ -260,28 +256,47 @@ app.post('/api/v1/rfqs/create', async (req, res) => {
   const newRfqId = `RFQ-00${db.rfqs.length + 44}`;
   const total = qty * pricePerTon;
 
-  const vAcc = await generateEscrowVirtualAccount(newRfqId, coop, total);
-  if (!vAcc?.success || !vAcc?.accountNumber) {
+  try {
+    const vAcc = await generateEscrowVirtualAccount({
+      accountReference: newRfqId,
+      accountName: `Adept Escrow - ${coop}`,
+      currencyCode: 'NGN',
+      contractCode: MONNIFY_CONTRACT_CODE,
+      customerEmail: `rfq_${newRfqId.toLowerCase()}@adeptprocessing.ng`,
+      customerName: coop,
+      getAllAvailableBanks: false,
+      preferredBanks: ['035'],
+    });
+
+    if (!vAcc?.accountNumber) {
+      return res.status(502).json({
+        success: false,
+        message: 'Unable to create escrow virtual account',
+        data: null,
+      });
+    }
+
+    const newRFQ = {
+      id: newRfqId,
+      coop,
+      product,
+      qty,
+      total,
+      status: 'OPEN_FOR_ESCROW',
+      phone,
+      accountNumber: vAcc.accountNumber,
+    };
+
+    db.rfqs.push(newRFQ);
+    res.json({ success: true, data: newRFQ });
+  } catch (error) {
+    console.error('RFQ Creation Error:', error?.message || error);
     return res.status(502).json({
       success: false,
-      message: vAcc?.message || 'Unable to create escrow virtual account',
+      message: error?.message || 'Failed to create RFQ with escrow account',
       data: null,
     });
   }
-
-  const newRFQ = {
-    id: newRfqId,
-    coop,
-    product,
-    qty,
-    total,
-    status: 'OPEN_FOR_ESCROW',
-    phone,
-    accountNumber: vAcc.accountNumber,
-  };
-
-  db.rfqs.push(newRFQ);
-  res.json({ success: true, data: newRFQ });
 });
 
 // Start Server (skip during tests)
