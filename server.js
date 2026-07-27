@@ -6,12 +6,81 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const rateLimit = require('express-rate-limit');
 const { fulfillOrderPayment } = require('./services/orderService');
 
 const app = express();
+
+// Enable proxy trust (essential when deployed behind load balancers like Render, Nginx, or AWS ALB)
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
+
+// ==========================================
+// 1. Rate Limiting Middleware
+// ==========================================
+
+// Global Limiter: Protects general API routes (100 requests per 15 minutes)
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    status: 429,
+    error: 'Too many requests. Please try again later.'
+  }
+});
+
+// USSD Limiter: Prevents rapid session spamming (30 requests per minute)
+const ussdLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Returns plain-text END signal matching mobile network gateway expectations
+  handler: (req, res) => {
+    res.setHeader('Content-Type', 'text/plain');
+    return res.status(429).send('END System busy. Please try again in a moment.');
+  }
+});
+
+// Apply global rate limiting to all API routes
+app.use('/api/', globalLimiter);
+
+// ==========================================
+// 2. Monnify IP Whitelisting Middleware
+// ==========================================
+
+// Monnify official production IP address
+const MONNIFY_ALLOWED_IPS = [
+  '35.242.133.146',
+  '::ffff:35.242.133.146' // IPv6-mapped IPv4 equivalent
+];
+
+const verifyMonnifyIP = (req, res, next) => {
+  // Bypass IP restrictions during local development or unit testing
+  if (process.env.NODE_ENV !== 'production') {
+    return next();
+  }
+
+  // Extract real client IP through reverse proxy headers
+  const clientIp = req.headers['x-forwarded-for']
+    ? req.headers['x-forwarded-for'].split(',')[0].trim()
+    : req.socket.remoteAddress;
+
+  if (MONNIFY_ALLOWED_IPS.includes(clientIp)) {
+    return next();
+  }
+
+  console.warn(`[SECURITY REJECTION] Monnify Webhook blocked from IP: ${clientIp}`);
+  return res.status(403).json({
+    status: 403,
+    error: 'Forbidden: Request origin not allowed.'
+  });
+};
 
 // Environment Variables (Load via dotenv in production)
 const PORT = process.env.PORT || 5000;
@@ -117,9 +186,9 @@ async function generateEscrowVirtualAccount(accountDetails) {
 }
 
 // =============================================================================
-// 1. AFRICA'S TALKING USSD GATEWAY ENDPOINT (*992#)
+// 3. AFRICA'S TALKING USSD GATEWAY ENDPOINT (*992#)
 // =============================================================================
-app.post('/api/v1/ussd', async (req, res) => {
+app.post('/api/v1/ussd', ussdLimiter, async (req, res) => {
   const { phoneNumber, text } = req.body;
   let response = '';
 
@@ -218,9 +287,9 @@ Funds will lock in Escrow.`;
 });
 
 // =============================================================================
-// 2. MONNIFY / PAYSTACK BANK ESCROW WEBHOOK
+// 4. MONNIFY / PAYSTACK BANK ESCROW WEBHOOK
 // =============================================================================
-app.post('/api/v1/payments/monnify-webhook', async (req, res) => {
+app.post('/api/v1/payments/monnify-webhook', verifyMonnifyIP, async (req, res) => {
   try {
     const { eventType, eventData } = req.body;
 
@@ -245,7 +314,7 @@ app.post('/api/v1/payments/monnify-webhook', async (req, res) => {
 });
 
 // =============================================================================
-// 3. REST API FOR WEB DASHBOARD & MOBILE FIELD APP
+// 5. REST API FOR WEB DASHBOARD & MOBILE FIELD APP
 // =============================================================================
 app.get('/api/v1/rfqs', (req, res) => {
   res.json({ success: true, data: db.rfqs });
