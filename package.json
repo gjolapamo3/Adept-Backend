@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:api": "node server.js",
     "test": "jest --runInBand --detectOpenHandles"
   },
   "dependencies": {

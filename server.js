@@ -368,6 +368,15 @@ app.post('/api/v1/rfqs/create', async (req, res) => {
   }
 });
 
+// Lightweight process health endpoint for platform probes.
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Start Server (skip during tests)
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
