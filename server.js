@@ -14,6 +14,15 @@ const app = express();
 // Enable proxy trust (essential when deployed behind load balancers like Render, Nginx, or AWS ALB)
 app.set('trust proxy', 1);
 
+// Lightweight health check for platform probes (e.g., Render)
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
@@ -154,6 +163,9 @@ setInterval(broadcastMarketplaceUpdate, STREAM_BROADCAST_MS);
 async function getMonnifyAccessToken() {
   try {
     if (!MONNIFY_API_KEY || !MONNIFY_SECRET_KEY || !MONNIFY_BASE_URL) {
+      if (process.env.NODE_ENV === 'test') {
+        return 'mock-test-token';
+      }
       throw new Error('Missing Monnify credentials or base URL in environment variables');
     }
 
@@ -186,10 +198,84 @@ async function getMonnifyAccessToken() {
 }
 
 // Generate Dynamic NIBSS Virtual Account for Escrow
+<<<<<<< HEAD
 async function generateEscrowVirtualAccount(accountDetails) {
   const token = await getMonnifyAccessToken();
   if (!token) {
     throw new Error('Failed to obtain Monnify access token.');
+=======
+async function generateEscrowVirtualAccount(rfqId, customerName, amount) {
+  try {
+    const token = await getMonnifyAccessToken();
+
+    if (!token) {
+      return {
+        success: false,
+        message: 'Unable to authenticate with Monnify',
+        accountNumber: null,
+        bankName: null,
+      };
+    }
+
+    if (process.env.NODE_ENV === 'test' && token === 'mock-test-token') {
+      const fallbackAccountNumber = `992${Math.floor(10000000 + Math.random() * 90000000)}`;
+      return {
+        success: true,
+        message: 'Using mock virtual account for tests',
+        accountNumber: fallbackAccountNumber,
+        bankName: 'Wema Bank (Fallback)',
+        amount,
+      };
+    }
+
+    const response = await axios.post(
+      `${MONNIFY_BASE_URL}/api/v2/bank-transfer/reserved-accounts`,
+      {
+        accountReference: rfqId,
+        accountName: `Adept Escrow - ${customerName}`,
+        currencyCode: 'NGN',
+        contractCode: MONNIFY_CONTRACT_CODE,
+        customerEmail: `coop_${rfqId.toLowerCase()}@adeptprocessing.ng`,
+        customerName,
+        getAllAvailableBanks: false,
+        preferredBanks: ['035'],
+      },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    const responseBody = response?.data?.responseBody;
+    const account = responseBody?.accounts?.[0];
+    const accountNumber = account?.accountNumber || responseBody?.accountNumber || null;
+    const bankName = account?.bankName || responseBody?.bankName || null;
+
+    if (!accountNumber) {
+      return {
+        success: false,
+        message: response?.data?.responseMessage || 'Monnify did not return an account number',
+        accountNumber: null,
+        bankName: null,
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Virtual account created',
+      accountNumber,
+      bankName: bankName || 'Wema Bank',
+      amount,
+    };
+  } catch (error) {
+    console.error('Virtual Account Creation Error:', error?.response?.data || error?.message || error);
+    return {
+      success: false,
+      message:
+        error?.response?.data?.responseMessage ||
+        error?.message ||
+        'Monnify reserved account creation failed',
+      accountNumber: null,
+      bankName: null,
+    };
+>>>>>>> c100aee (fix: add /health endpoint and sync render spec)
   }
 
   const response = await axios.post(
