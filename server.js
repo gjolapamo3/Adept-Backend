@@ -11,6 +11,7 @@ const path = require('path');
 const { fulfillOrderPayment } = require('./services/orderService');
 
 const app = express();
+const shouldRunStandaloneServer = require.main === module;
 
 // Enable proxy trust (essential when deployed behind load balancers like Render, Nginx, or AWS ALB)
 app.set('trust proxy', 1);
@@ -174,7 +175,7 @@ const broadcastMarketplaceUpdate = () => {
   }
 };
 
-if (process.env.NODE_ENV !== 'test') {
+if (shouldRunStandaloneServer) {
   setInterval(broadcastMarketplaceUpdate, STREAM_BROADCAST_MS);
 }
 
@@ -358,6 +359,7 @@ Total Value: N${estimatedTotal.toLocaleString()}
           };
 
           db.rfqs.push(newRFQ);
+          broadcastMarketplaceUpdate();
 
           response = `END CONTRACT ISSUED!
 ID: ${newRfqId}
@@ -431,6 +433,7 @@ const upsertTransactionLog = (payload) => {
       ...payload,
       updatedAt: new Date().toISOString(),
     };
+    broadcastMarketplaceUpdate();
     return db.transactions[existingIndex];
   }
 
@@ -440,6 +443,7 @@ const upsertTransactionLog = (payload) => {
     updatedAt: new Date().toISOString(),
   };
   db.transactions.unshift(transaction);
+  broadcastMarketplaceUpdate();
   return transaction;
 };
 
@@ -561,6 +565,7 @@ app.post('/api/v1/rfqs/create', async (req, res) => {
     };
 
     db.rfqs.push(newRFQ);
+    broadcastMarketplaceUpdate();
     res.json({ success: true, data: newRFQ });
   } catch (error) {
     console.error('RFQ Creation Error:', error?.message || error);
@@ -582,7 +587,7 @@ app.get('/health', (req, res) => {
 });
 
 // Start Server (skip during tests)
-if (process.env.NODE_ENV !== 'test') {
+if (shouldRunStandaloneServer) {
   app.listen(PORT, () => {
     console.log(`Adept Processing Nig LTD Backend Engine Running on Port ${PORT}`);
   });
