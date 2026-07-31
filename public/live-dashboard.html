@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adept Live Dashboard</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --panel: rgba(255, 251, 245, 0.92);
+      --text: #1f2a1f;
+      --muted: #5d6a5d;
+      --accent: #0d7a5f;
+      --accent-soft: #dff4ec;
+      --border: rgba(31, 42, 31, 0.1);
+      --shadow: 0 18px 45px rgba(39, 61, 48, 0.12);
+      --danger: #b84a3a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(13, 122, 95, 0.16), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(184, 74, 58, 0.14), transparent 30%),
+        linear-gradient(135deg, #f8f4ed 0%, #e9efe7 100%);
+    }
+
+    .shell {
+      width: min(1120px, calc(100% - 32px));
+      margin: 32px auto;
+      padding: 28px;
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.4fr 0.8fr;
+      gap: 18px;
+      align-items: start;
+      margin-bottom: 24px;
+    }
+
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2.1rem, 4vw, 3.6rem);
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+    }
+
+    .hero p,
+    .status-card p,
+    .table-meta,
+    .empty,
+    .updated {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .status-card {
+      padding: 18px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(13, 122, 95, 0.12), rgba(255, 255, 255, 0.55));
+      border: 1px solid rgba(13, 122, 95, 0.12);
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 0 6px rgba(13, 122, 95, 0.12);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .metric {
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.72);
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .metric-label {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .metric-value {
+      font-size: clamp(2rem, 4vw, 3.1rem);
+      font-weight: 700;
+      letter-spacing: -0.06em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.3fr 0.9fr;
+      gap: 18px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1.3fr 0.9fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      min-width: 150px;
+      flex: 1 1 160px;
+    }
+
+    .field label {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .field input,
+    .field select,
+    .action {
+      border: 1px solid rgba(31, 42, 31, 0.14);
+      border-radius: 14px;
+      min-height: 44px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .action {
+      cursor: pointer;
+      background: linear-gradient(135deg, #114e43, #0d7a5f);
+      color: #f7f5ef;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      flex: 0 0 auto;
+    }
+
+    .action.secondary {
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--text);
+    }
+
+    .transport-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .panel {
+      padding: 18px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--border);
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+      margin-bottom: 14px;
+    }
+
+    .panel h2 {
+      margin: 0;
+      font-size: 1.25rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.94rem;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 12px 8px;
+      border-bottom: 1px solid rgba(31, 42, 31, 0.08);
+      vertical-align: top;
+    }
+
+    th {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    tbody tr {
+      transition: background-color 160ms ease, transform 160ms ease;
+    }
+
+    tbody tr.flash {
+      background: rgba(13, 122, 95, 0.09);
+      transform: translateX(2px);
+    }
+
+    .pill {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(13, 122, 95, 0.1);
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .pill.pending {
+      background: rgba(184, 74, 58, 0.12);
+      color: var(--danger);
+    }
+
+    .empty {
+      padding: 14px 0 6px;
+    }
+
+    .updated {
+      margin-top: 18px;
+      font-size: 0.9rem;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+
+    @media (max-width: 920px) {
+      .hero,
+      .grid,
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .shell {
+        width: min(100% - 20px, 1120px);
+        padding: 18px;
+        margin: 10px auto;
+      }
+
+      .panel {
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <h1>Adept live operations board</h1>
+        <p>Polling the backend every 5 seconds for RFQ, escrow, and payment telemetry.</p>
+      </div>
+      <aside class="status-card">
+        <div class="status-chip"><span class="status-dot"></span><span id="status-text">Connecting</span></div>
+        <p style="margin-top: 12px;">Source: <strong>/api/v1/dashboard/live</strong></p>
+        <p style="margin-top: 8px;">Path aliases active for Monnify and USSD webhook telemetry.</p>
+      </aside>
+    </section>
+
+    <section class="controls">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Live Controls</h2>
+          <span class="table-meta">Push-first with polling fallback</span>
+        </div>
+        <div class="control-group">
+          <div class="field">
+            <label for="poll-interval">Fallback poll interval</label>
+            <select id="poll-interval">
+              <option value="3000">3 seconds</option>
+              <option value="5000" selected>5 seconds</option>
+              <option value="10000">10 seconds</option>
+              <option value="15000">15 seconds</option>
+            </select>
+          </div>
+          <button class="action" id="manual-refresh" type="button">Refresh now</button>
+          <button class="action secondary" id="reconnect-stream" type="button">Reconnect stream</button>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Filters</h2>
+          <span class="table-meta">Client-side row refinement</span>
+        </div>
+        <div class="control-group">
+          <div class="field">
+            <label for="rfq-status-filter">RFQ status</label>
+            <select id="rfq-status-filter">
+              <option value="ALL" selected>All statuses</option>
+              <option value="OPEN_FOR_ESCROW">Open for escrow</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="transaction-search">Transaction reference</label>
+            <input id="transaction-search" type="search" placeholder="Search payment reference">
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="metrics">
+      <article class="metric">
+        <span class="metric-label">Total RFQs</span>
+        <strong class="metric-value" id="metric-total-rfqs">0</strong>
+        <span class="table-meta">Active opportunity volume</span>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Open For Escrow</span>
+        <strong class="metric-value" id="metric-open-escrow">0</strong>
+        <span class="table-meta">Contracts awaiting settlement</span>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Transactions Logged</span>
+        <strong class="metric-value" id="metric-transactions">0</strong>
+        <span class="table-meta">Webhook payment ledger</span>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Last Sync</span>
+        <strong class="metric-value" id="metric-last-sync">--</strong>
+        <span class="table-meta">Browser poll timestamp</span>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Marketplace RFQs</h2>
+          <span class="table-meta" id="rfq-count">0 rows</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Co-op</th>
+              <th>Product</th>
+              <th>Qty</th>
+              <th>Total</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rfq-rows"></tbody>
+        </table>
+        <p class="empty" id="rfq-empty" hidden>No RFQs available.</p>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Recent Transactions</h2>
+          <div class="transport-meta">
+            <span class="table-meta" id="transport-mode">Transport: polling</span>
+            <span class="table-meta" id="transaction-count">0 records</span>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Reference</th>
+              <th>Order</th>
+              <th>Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="transaction-rows"></tbody>
+        </table>
+        <p class="empty" id="transaction-empty" hidden>No transactions logged yet.</p>
+      </article>
+    </section>
+
+    <p class="updated" id="updated-at">Awaiting first poll...</p>
+  </main>
+
+  <script>
+    const endpoint = '/api/v1/dashboard/live';
+    const streamEndpoint = '/api/v1/marketplace/events';
+    let pollIntervalMs = 5000;
+    let previousRowKeys = new Set();
+    let previousTransactionKeys = new Set();
+    let pollTimerId = null;
+    let eventSource = null;
+    let latestSnapshot = null;
+
+    const currency = new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency: 'NGN',
+      maximumFractionDigits: 0,
+    });
+
+    const dom = {
+      statusText: document.getElementById('status-text'),
+      transportMode: document.getElementById('transport-mode'),
+      metricTotalRfqs: document.getElementById('metric-total-rfqs'),
+      metricOpenEscrow: document.getElementById('metric-open-escrow'),
+      metricTransactions: document.getElementById('metric-transactions'),
+      metricLastSync: document.getElementById('metric-last-sync'),
+      pollInterval: document.getElementById('poll-interval'),
+      manualRefresh: document.getElementById('manual-refresh'),
+      reconnectStream: document.getElementById('reconnect-stream'),
+      rfqStatusFilter: document.getElementById('rfq-status-filter'),
+      transactionSearch: document.getElementById('transaction-search'),
+      rfqCount: document.getElementById('rfq-count'),
+      transactionCount: document.getElementById('transaction-count'),
+      rfqRows: document.getElementById('rfq-rows'),
+      transactionRows: document.getElementById('transaction-rows'),
+      rfqEmpty: document.getElementById('rfq-empty'),
+      transactionEmpty: document.getElementById('transaction-empty'),
+      updatedAt: document.getElementById('updated-at'),
+    };
+
+    function normalizedStatus(status) {
+      return status || 'UNKNOWN';
+    }
+
+    function getFilteredRows(rows) {
+      const statusFilter = dom.rfqStatusFilter.value;
+      if (statusFilter === 'ALL') {
+        return rows;
+      }
+
+      return rows.filter((row) => normalizedStatus(row.status) === statusFilter);
+    }
+
+    function getFilteredTransactions(transactions) {
+      const query = dom.transactionSearch.value.trim().toLowerCase();
+      if (!query) {
+        return transactions;
+      }
+
+      return transactions.filter((transaction) =>
+        (transaction.paymentReference || '').toLowerCase().includes(query)
+      );
+    }
+
+    function updateTransportMode(mode) {
+      dom.transportMode.textContent = 'Transport: ' + mode;
+    }
+
+    function formatTime(isoString) {
+      if (!isoString) {
+        return '--';
+      }
+      return new Date(isoString).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    }
+
+    function renderRows(rows) {
+      const filteredRows = getFilteredRows(rows);
+      dom.rfqRows.innerHTML = '';
+      dom.rfqEmpty.hidden = filteredRows.length > 0;
+      dom.rfqCount.textContent = filteredRows.length + ' rows';
+
+      const nextKeys = new Set(filteredRows.map((row) => row.id));
+
+      filteredRows.forEach((row) => {
+        const tr = document.createElement('tr');
+        if (!previousRowKeys.has(row.id)) {
+          tr.classList.add('flash');
+          setTimeout(() => tr.classList.remove('flash'), 1200);
+        }
+
+        tr.innerHTML = [
+          '<td>' + row.id + '</td>',
+          '<td>' + row.coop + '</td>',
+          '<td>' + row.product + '</td>',
+          '<td>' + row.qty + ' MT</td>',
+          '<td>' + currency.format(row.total || 0) + '</td>',
+          '<td><span class="pill">' + row.status.replaceAll('_', ' ') + '</span></td>',
+        ].join('');
+        dom.rfqRows.appendChild(tr);
+      });
+
+      previousRowKeys = nextKeys;
+    }
+
+    function renderTransactions(transactions) {
+      const filteredTransactions = getFilteredTransactions(transactions);
+      dom.transactionRows.innerHTML = '';
+      dom.transactionEmpty.hidden = filteredTransactions.length > 0;
+      dom.transactionCount.textContent = filteredTransactions.length + ' records';
+
+      const nextKeys = new Set(filteredTransactions.map((transaction) => transaction.paymentReference));
+
+      filteredTransactions.slice(0, 8).forEach((transaction) => {
+        const tr = document.createElement('tr');
+        if (!previousTransactionKeys.has(transaction.paymentReference)) {
+          tr.classList.add('flash');
+          setTimeout(() => tr.classList.remove('flash'), 1200);
+        }
+
+        const statusClass = transaction.paymentStatus === 'SUCCESS' ? 'pill' : 'pill pending';
+        tr.innerHTML = [
+          '<td>' + transaction.paymentReference + '</td>',
+          '<td>' + (transaction.orderReference || '-') + '</td>',
+          '<td>' + currency.format(transaction.amountPaid || 0) + '</td>',
+          '<td><span class="' + statusClass + '">' + (transaction.paymentStatus || 'PENDING') + '</span></td>',
+        ].join('');
+        dom.transactionRows.appendChild(tr);
+      });
+
+      previousTransactionKeys = nextKeys;
+    }
+
+    function renderSnapshot(snapshot) {
+      latestSnapshot = snapshot;
+      dom.statusText.textContent = 'Live';
+      dom.metricTotalRfqs.textContent = snapshot.metrics.totalRfqs;
+      dom.metricOpenEscrow.textContent = snapshot.metrics.openForEscrow;
+      dom.metricTransactions.textContent = (snapshot.transactions || []).length;
+      dom.metricLastSync.textContent = formatTime(snapshot.timestamp);
+      dom.updatedAt.textContent = 'Last backend update: ' + new Date(snapshot.timestamp).toLocaleString();
+      renderRows(snapshot.rows || []);
+      renderTransactions(snapshot.transactions || []);
+    }
+
+    function rerenderLatestSnapshot() {
+      if (latestSnapshot) {
+        renderSnapshot(latestSnapshot);
+      }
+    }
+
+    async function pollDashboard() {
+      try {
+        updateTransportMode(eventSource ? 'sse + poll-backfill' : 'polling');
+        const response = await fetch(endpoint, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+
+        const payload = await response.json();
+        renderSnapshot(payload);
+      } catch (error) {
+        dom.statusText.textContent = 'Retrying';
+        dom.updatedAt.textContent = 'Live poll failed: ' + error.message;
+      }
+    }
+
+    function startPolling() {
+      if (pollTimerId) {
+        clearInterval(pollTimerId);
+      }
+
+      pollTimerId = setInterval(pollDashboard, pollIntervalMs);
+    }
+
+    function connectStream() {
+      if (typeof EventSource === 'undefined') {
+        updateTransportMode('polling only');
+        return;
+      }
+
+      if (eventSource) {
+        eventSource.close();
+      }
+
+      eventSource = new EventSource(streamEndpoint);
+      updateTransportMode('connecting sse');
+
+      eventSource.addEventListener('connected', () => {
+        dom.statusText.textContent = 'Streaming';
+        updateTransportMode('sse + poll-backfill');
+      });
+
+      eventSource.addEventListener('market_update', (event) => {
+        const snapshot = JSON.parse(event.data);
+        renderSnapshot({
+          success: true,
+          timestamp: snapshot.timestamp,
+          metrics: snapshot.metrics,
+          rows: snapshot.rfqs || [],
+          transactions: snapshot.transactions || [],
+        });
+        dom.statusText.textContent = 'Streaming';
+        updateTransportMode('sse + poll-backfill');
+      });
+
+      eventSource.onerror = () => {
+        dom.statusText.textContent = 'Polling fallback';
+        updateTransportMode('polling fallback');
+      };
+    }
+
+    dom.manualRefresh.addEventListener('click', () => {
+      pollDashboard();
+    });
+
+    dom.reconnectStream.addEventListener('click', () => {
+      connectStream();
+      pollDashboard();
+    });
+
+    dom.pollInterval.addEventListener('change', (event) => {
+      pollIntervalMs = Number(event.target.value);
+      startPolling();
+      dom.updatedAt.textContent = 'Fallback poll interval set to ' + (pollIntervalMs / 1000) + ' seconds.';
+    });
+
+    dom.rfqStatusFilter.addEventListener('change', rerenderLatestSnapshot);
+    dom.transactionSearch.addEventListener('input', rerenderLatestSnapshot);
+
+    pollDashboard();
+    startPolling();
+    connectStream();
+  </script>
+</body>
+</html>
