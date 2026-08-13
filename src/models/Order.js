@@ -8,6 +8,7 @@ const orderItemSchema = new mongoose.Schema({
 });
 
 const orderSchema = new mongoose.Schema({
+  order_reference: { type: String, required: true, unique: true },
   buyer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   items: [orderItemSchema],
   total_amount: { type: Number, required: true },

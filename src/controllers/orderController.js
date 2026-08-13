@@ -12,22 +12,24 @@ const createOrder = async (req, res) => {
     const orderReference = `APT-ORD-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const newOrder = await Order.create({
       buyer: buyer_id,
+      order_reference: orderReference,
       items: items.map((item) => ({
-        product: item.product_id,
+        product_id: item.product_id,
         quantity: Number(item.quantity),
-        unitPrice: Number(item.unit_price)
+        unit_price: Number(item.unit_price),
+        unit_of_measure: item.unit_of_measure
       })),
-      totalAmount,
-      orderReference,
-      deliveryAddress: delivery_details.shipping_address,
-      status: 'PENDING_PAYMENT'
+      total_amount: totalAmount,
+      delivery_details,
+      payment_method,
+      status: 'pending'
     });
 
     return res.status(201).json({
       message: 'Order created successfully. Pending payment.',
       order_id: newOrder._id,
-      order_reference: newOrder.orderReference,
-      total_amount: newOrder.totalAmount
+      order_reference: newOrder.order_reference,
+      total_amount: newOrder.total_amount
     });
 
   } catch (error) {
