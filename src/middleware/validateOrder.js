@@ -1,18 +1,28 @@
-// Validates the incoming buyer JSON payload
+const mongoose = require('mongoose');
+
 const validateOrderInput = (req, res, next) => {
   const { buyer_id, items, delivery_details } = req.body;
 
-  if (!buyer_id) {
-    return res.status(400).json({ error: "Missing buyer_id" });
+  if (!buyer_id || !mongoose.Types.ObjectId.isValid(buyer_id)) {
+    return res.status(400).json({ error: 'A valid buyer_id is required' });
   }
   if (!items || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: "Order must contain at least one item" });
+    return res.status(400).json({ error: 'Order must contain at least one item' });
   }
-  if (!delivery_details || !delivery_details.shipping_address) {
-    return res.status(400).json({ error: "Shipping address is required" });
+  if (items.some((item) => (
+    !item
+    || !mongoose.Types.ObjectId.isValid(item.product_id)
+    || !Number.isFinite(Number(item.quantity))
+    || Number(item.quantity) < 1
+    || !Number.isFinite(Number(item.unit_price))
+  ))) {
+    return res.status(400).json({ error: 'Each item requires a valid product_id, quantity, and unit_price' });
+  }
+  if (!delivery_details || !delivery_details.shipping_address || !delivery_details.contact_phone) {
+    return res.status(400).json({ error: 'Shipping address and contact phone are required' });
   }
 
-  next(); // Payload is valid, move to controller
+  next();
 };
 
 module.exports = { validateOrderInput };

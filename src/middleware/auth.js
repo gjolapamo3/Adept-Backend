@@ -1,17 +1,19 @@
-const checkRole = (...allowedRoles) => {
-  return (req, res, next) => {
-    if (!req.user || !req.user.role) {
-      return res.status(403).json({ error: 'User identity/role missing.' });
-    }
+const jwt = require('jsonwebtoken');
 
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ 
-        error: `Access denied. Requires one of the following roles: [${allowedRoles.join(', ')}]` 
-      });
-    }
+const verifyToken = (req, res, next) => {
+  const authorization = req.headers.authorization || '';
+  const [scheme, token] = authorization.split(' ');
 
-    next();
-  };
+  if (scheme !== 'Bearer' || !token) {
+    return res.status(401).json({ error: 'Authentication token is required.' });
+  }
+
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET || 'development-secret');
+    return next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Authentication token is invalid or expired.' });
+  }
 };
 
-module.exports = { checkRole };
+module.exports = { verifyToken };

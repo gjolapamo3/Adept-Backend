@@ -9,6 +9,7 @@ const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { fulfillOrderPayment } = require('./services/orderService');
+const orderRoutes = require('./src/routes/orderRoutes');
 
 const app = express();
 const shouldRunStandaloneServer = require.main === module;
@@ -27,8 +28,27 @@ app.get('/health', (req, res) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+const configuredCorsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: configuredCorsOrigins.length > 0
+    ? (origin, callback) => {
+      if (!origin || configuredCorsOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('CORS origin not allowed'));
+    }
+    : true,
+  credentials: true,
+}));
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.use('/api/orders', orderRoutes);
+app.use('/api/v1/orders', orderRoutes);
 
 app.get('/dashboard/live', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'live-dashboard.html'));

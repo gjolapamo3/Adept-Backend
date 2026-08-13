@@ -25,4 +25,4 @@ const orderSchema = new mongoose.Schema({
   payment_method: { type: String, default: 'bank_transfer' }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Order', orderSchema);
+module.exports = mongoose.models.Order || mongoose.model('Order', orderSchema);

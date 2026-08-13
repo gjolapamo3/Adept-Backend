@@ -4,7 +4,10 @@ const checkRole = (...allowedRoles) => {
       return res.status(403).json({ error: 'User identity/role missing.' });
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    const userRole = String(req.user.role).toLowerCase();
+    const normalizedAllowedRoles = allowedRoles.map((role) => String(role).toLowerCase());
+
+    if (!normalizedAllowedRoles.includes(userRole)) {
       return res.status(403).json({ 
         error: `Access denied. Requires one of the following roles: [${allowedRoles.join(', ')}]` 
       });
