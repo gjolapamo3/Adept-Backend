@@ -24,4 +24,4 @@ const productSchema = new mongoose.Schema({
 // Indexing for high-performance searching and filtering
 productSchema.index({ name: 'text', category: 1 });
 
-module.exports = mongoose.model('Product', productSchema);
+module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);

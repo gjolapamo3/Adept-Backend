@@ -11,6 +11,7 @@ const path = require('path');
 const { fulfillOrderPayment } = require('./services/orderService');
 const { connectDatabase } = require('./config/database');
 const orderRoutes = require('./src/routes/orderRoutes');
+const productRoutes = require('./src/routes/productRoutes');
 const authRoutes = require('./routes/authRoutes');
 
 const app = express();
@@ -51,6 +52,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/api/orders', orderRoutes);
 app.use('/api/v1/orders', orderRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/v1/products', productRoutes);
 
 app.get('/dashboard/live', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'live-dashboard.html'));

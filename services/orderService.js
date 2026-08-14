@@ -24,26 +24,26 @@ const fulfillOrderPayment = async (paymentData) => {
   );
 
   // 2. Find the associated Order
-  const order = await Order.findOne({ orderReference }).populate('items.product');
+  const order = await Order.findOne({ order_reference: orderReference }).populate('items.product_id');
 
   if (!order) {
     throw new Error(`Order with reference ${orderReference} not found.`);
   }
 
   // Idempotent safeguard: prevent double stock deduction if already processed
-  if (order.status === 'PAID' || order.status === 'PROCESSING' || order.status === 'FULFILLED') {
+  if (['paid', 'processing', 'delivered'].includes(order.status)) {
     return { status: 'ALREADY_PROCESSED', order };
   }
 
   // 3. Update Order status to PAID
-  order.status = 'PAID';
+  order.status = 'paid';
   await order.save();
 
   // 4. Auto-deduct inventory stock atomically using $inc
   for (const item of order.items) {
     await Product.findByIdAndUpdate(
-      item.product._id,
-      { $inc: { availableStock: -item.quantity } },
+      item.product_id._id,
+      { $inc: { available_stock: -item.quantity } },
       { new: true }
     );
   }

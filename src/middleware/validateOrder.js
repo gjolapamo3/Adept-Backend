@@ -9,7 +9,14 @@ const validateOrderInput = (req, res, next) => {
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Order must contain at least one item' });
   }
-  if (items.some((item) => (
+
+  req.body.items = items.map((item) => ({
+    ...item,
+    product_id: item?.product_id || item?.productId || item?._id || item?.id,
+    unit_price: item?.unit_price ?? item?.unitPrice ?? item?.pricePerUnit ?? item?.price,
+  }));
+
+  if (req.body.items.some((item) => (
     !item
     || !mongoose.Types.ObjectId.isValid(item.product_id)
     || !Number.isFinite(Number(item.quantity))
