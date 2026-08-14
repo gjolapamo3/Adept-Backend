@@ -1,5 +1,7 @@
 # Adept-Backend
 
+The API requires a MongoDB connection string in `MONGODB_URI`. Configure this environment variable locally and in the Render web service before using `/api/auth/register` or `/api/auth/login`.
+
 ## Test Telemetry In-Memory (No Atlas Credentials Needed)
 
 If you just want to test the webhook logic, telemetry ingestion, and SSE live stream without touching Atlas credentials locally, start the app in test mode:

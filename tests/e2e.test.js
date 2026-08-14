@@ -5,6 +5,27 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 
 describe('Adept backend e2e flow', () => {
+  it('registers a user and returns a JWT token', async () => {
+    const email = `auth-test-${Date.now()}@example.com`;
+
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Auth Test User',
+        email,
+        password: 'StrongPass123',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.user).toMatchObject({
+      name: 'Auth Test User',
+      email,
+      role: 'buyer',
+    });
+    expect(typeof response.body.token).toBe('string');
+    expect(response.body.token.length).toBeGreaterThan(20);
+  });
+
   it('serves a live dashboard page that polls the backend data endpoint', async () => {
     const response = await request(app).get('/dashboard/live');
 

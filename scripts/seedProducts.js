@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const { connectDatabase } = require('../config/database');
 const User = require('../models/User');
 const Product = require('../src/models/Product');
 
@@ -42,8 +41,6 @@ const products = [
 ];
 
 const seedProducts = async () => {
-  await connectDatabase();
-
   const supplier = await User.findOneAndUpdate(
     { email: supplierEmail },
     {
@@ -71,7 +68,10 @@ const seedProducts = async () => {
 };
 
 if (require.main === module) {
-  seedProducts()
+  // Connect directly (not via connectDatabase) since that already auto-seeds on an empty catalog
+  const mongoUri = process.env.MONGODB_URI || process.env.MONGO_URI;
+  mongoose.connect(mongoUri)
+    .then(() => seedProducts())
     .catch((error) => {
       console.error('Product seeding failed:', error.message);
       process.exitCode = 1;
