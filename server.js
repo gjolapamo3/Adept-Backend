@@ -9,6 +9,7 @@ const axios = require('axios');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { fulfillOrderPayment } = require('./services/orderService');
+const { connectDatabase } = require('./config/database');
 const orderRoutes = require('./src/routes/orderRoutes');
 const authRoutes = require('./routes/authRoutes');
 
@@ -610,9 +611,16 @@ app.get('/health', (req, res) => {
 
 // Start Server (skip during tests)
 if (shouldRunStandaloneServer) {
-  app.listen(PORT, () => {
-    console.log(`Adept Processing Nig LTD Backend Engine Running on Port ${PORT}`);
-  });
+  connectDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Adept Processing Nig LTD Backend Engine Running on Port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error('Failed to connect to MongoDB:', error.message);
+      process.exit(1);
+    });
 }
 
 module.exports = app;
