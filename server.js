@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { fulfillOrderPayment } = require('./services/orderService');
 const orderRoutes = require('./src/routes/orderRoutes');
+const authRoutes = require('./routes/authRoutes');
 
 const app = express();
 const shouldRunStandaloneServer = require.main === module;
@@ -85,6 +86,7 @@ const ussdLimiter = rateLimit({
 
 // Apply global rate limiting to all API routes
 app.use('/api/', globalLimiter);
+app.use('/api/auth', authRoutes);
 
 // ==========================================
 // 2. Monnify IP Whitelisting Middleware

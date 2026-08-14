@@ -1,6 +1,3 @@
-
-JavaScript 
-
 const crypto = require('crypto');
 
 // Monnify official production outbound IP addresses
