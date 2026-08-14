@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
 
 const validateOrderInput = (req, res, next) => {
-  const { buyer_id, items, delivery_details } = req.body;
+  const { items, delivery_details } = req.body;
 
-  if (!buyer_id || !mongoose.Types.ObjectId.isValid(buyer_id)) {
-    return res.status(400).json({ error: 'A valid buyer_id is required' });
+  if (!req.user?.id || !mongoose.Types.ObjectId.isValid(req.user.id)) {
+    return res.status(401).json({ error: 'Invalid authenticated user' });
   }
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Order must contain at least one item' });

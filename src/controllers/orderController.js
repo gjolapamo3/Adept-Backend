@@ -2,7 +2,7 @@ const Order = require('../models/Order');
 
 const createOrder = async (req, res) => {
   try {
-    const { buyer_id, items, delivery_details, payment_method } = req.body;
+    const { items, delivery_details, payment_method } = req.body;
 
     const totalAmount = items.reduce(
       (sum, item) => sum + Number(item.quantity) * Number(item.unit_price),
@@ -11,7 +11,7 @@ const createOrder = async (req, res) => {
 
     const orderReference = `APT-ORD-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const newOrder = await Order.create({
-      buyer: buyer_id,
+      buyer: req.user.id,
       order_reference: orderReference,
       items: items.map((item) => ({
         product_id: item.product_id,
