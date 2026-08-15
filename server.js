@@ -6,6 +6,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { fulfillOrderPayment } = require('./services/orderService');
@@ -13,6 +14,7 @@ const { connectDatabase } = require('./config/database');
 const orderRoutes = require('./src/routes/orderRoutes');
 const productRoutes = require('./src/routes/productRoutes');
 const authRoutes = require('./routes/authRoutes');
+const verifyMonnifyWebhook = require('./middleware/index');
 
 const app = express();
 const shouldRunStandaloneServer = require.main === module;
@@ -29,8 +31,12 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false,
+}));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 const configuredCorsOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map((origin) => origin.trim())
@@ -50,15 +56,6 @@ app.use(cors({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/api/orders', orderRoutes);
-app.use('/api/v1/orders', orderRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/v1/products', productRoutes);
-
-app.get('/dashboard/live', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'live-dashboard.html'));
-});
-
 // ==========================================
 // 1. Rate Limiting Middleware
 // ==========================================
@@ -75,6 +72,18 @@ const globalLimiter = rateLimit({
   }
 });
 
+app.use('/api/', globalLimiter);
+app.use('/api/auth', authRoutes);
+
+app.use('/api/orders', orderRoutes);
+app.use('/api/v1/orders', orderRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/v1/products', productRoutes);
+
+app.get('/dashboard/live', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'live-dashboard.html'));
+});
+
 // USSD Limiter: Prevents rapid session spamming (30 requests per minute)
 const ussdLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
@@ -87,10 +96,6 @@ const ussdLimiter = rateLimit({
     return res.status(429).send('END System busy. Please try again in a moment.');
   }
 });
-
-// Apply global rate limiting to all API routes
-app.use('/api/', globalLimiter);
-app.use('/api/auth', authRoutes);
 
 // ==========================================
 // 2. Monnify IP Whitelisting Middleware
@@ -241,6 +246,50 @@ async function getMonnifyAccessToken() {
     console.error('Monnify Auth Error:', error?.response?.data || error?.message || error);
     return null;
   }
+}
+
+async function verifyMonnifyTransactionStatus({ paymentReference, amountPaid }) {
+  if (process.env.NODE_ENV === 'test') {
+    return { status: 'PAID', amountPaid, currency: 'NGN' };
+  }
+
+  const accessToken = await getMonnifyAccessToken();
+  if (!accessToken) {
+    throw new Error('Unable to fetch Monnify access token for status verification');
+  }
+
+  const response = await axios.get(
+    `${MONNIFY_BASE_URL}/api/v1/transactions/${paymentReference}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      timeout: 15000,
+    }
+  );
+
+  const responseBody = response?.data?.responseBody || response?.data || {};
+  const providerStatus = String(responseBody.paymentStatus || responseBody.status || '').toUpperCase();
+  const providerAmount = Number(responseBody.amountPaid ?? responseBody.amount ?? amountPaid);
+  const providerCurrency = String(responseBody.currency || 'NGN').toUpperCase();
+
+  if (!['PAID', 'SUCCESS', 'SUCCESSFUL'].includes(providerStatus)) {
+    throw new Error(`Monnify payment not confirmed for ${paymentReference}: ${providerStatus || 'unknown'}`);
+  }
+
+  if (providerAmount !== Number(amountPaid)) {
+    throw new Error(`Monnify amount mismatch for ${paymentReference}: expected ${amountPaid}, got ${providerAmount}`);
+  }
+
+  if (providerCurrency !== 'NGN') {
+    throw new Error(`Unsupported currency for ${paymentReference}: ${providerCurrency}`);
+  }
+
+  return {
+    status: providerStatus,
+    amountPaid: providerAmount,
+    currency: providerCurrency,
+  };
 }
 
 // Generate Dynamic NIBSS Virtual Account for Escrow
@@ -478,13 +527,24 @@ const handleMonnifyWebhook = async (req, res) => {
     const { eventType, eventData = {} } = req.body || {};
 
     if (eventType === 'SUCCESSFUL_TRANSACTION' && eventData.paymentStatus === 'PAID') {
+      const paymentReference = eventData.transactionReference;
       const paymentData = {
-        paymentReference: eventData.transactionReference,
+        paymentReference,
         orderReference: eventData.paymentReference,
         amountPaid: eventData.amountPaid,
         paymentMethod: eventData.paymentMethod,
         rawPayload: req.body,
       };
+
+      const existing = db.transactions.find((txn) => txn.paymentReference === paymentReference);
+      if (existing && existing.paymentStatus === 'SUCCESS') {
+        return res.status(200).json({ status: 'success', message: 'Duplicate webhook ignored' });
+      }
+
+      await verifyMonnifyTransactionStatus({
+        paymentReference,
+        amountPaid: paymentData.amountPaid,
+      });
 
       upsertTransactionLog({
         source: 'monnify',
@@ -517,8 +577,8 @@ const handleMonnifyWebhook = async (req, res) => {
   }
 };
 
-app.post('/api/v1/payments/monnify-webhook', verifyMonnifyIP, handleMonnifyWebhook);
-app.post('/api/v1/monnify/webhook', verifyMonnifyIP, handleMonnifyWebhook);
+app.post('/api/v1/payments/monnify-webhook', verifyMonnifyIP, verifyMonnifyWebhook, handleMonnifyWebhook);
+app.post('/api/v1/monnify/webhook', verifyMonnifyIP, verifyMonnifyWebhook, handleMonnifyWebhook);
 
 // =============================================================================
 // 6. REST API FOR WEB DASHBOARD & MOBILE FIELD APP

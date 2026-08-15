@@ -1,5 +1,7 @@
 const Product = require('../models/Product');
 
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // Public: Get all active products with search & filter
 const getProducts = async (req, res) => {
   try {
@@ -8,7 +10,7 @@ const getProducts = async (req, res) => {
     let query = { is_active: true };
 
     if (category) query.category = category;
-    if (search) query.name = { $regex: search, $options: 'i' };
+    if (search) query.name = { $regex: escapeRegex(search), $options: 'i' };
     if (minPrice || maxPrice) {
       query.unit_price = {};
       if (minPrice) query.unit_price.$gte = Number(minPrice);

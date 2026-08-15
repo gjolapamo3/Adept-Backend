@@ -8,6 +8,11 @@ const MONNIFY_WHITELISTED_IPS = [
 
 const verifyMonnifyWebhook = (req, res, next) => {
   try {
+    // Bypass strict signature enforcement outside production (mirrors verifyMonnifyIP in server.js)
+    if (process.env.NODE_ENV !== 'production') {
+      return next();
+    }
+
     // 1. IP Whitelist Verification
     const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '')
       .split(',')[0]
