@@ -78,6 +78,45 @@ const createOrder = async (req, res) => {
   }
 };
 
+const getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid order id' });
+    }
+
+    const order = await Order.findById(id)
+      .populate('buyer', 'name email role')
+      .populate({
+        path: 'items.product_id',
+        select: 'name supplier unit_price currency unit_of_measure',
+        populate: { path: 'supplier', select: 'name email role' }
+      })
+      .populate('status_history.changed_by', 'name email role');
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const userId = String(req.user.id);
+    const userRole = String(req.user.role || '').toLowerCase();
+    const isBuyerOwner = String(order.buyer?._id || order.buyer) === userId;
+    const isSupplierOwner = order.items.some(
+      (item) => String(item.product_id?.supplier?._id || item.product_id?.supplier) === userId
+    );
+
+    if (userRole !== 'admin' && !isBuyerOwner && !isSupplierOwner) {
+      return res.status(403).json({ error: 'You are not associated with this order' });
+    }
+
+    return res.status(200).json(order);
+  } catch (error) {
+    console.error('Error retrieving order:', error);
+    return res.status(500).json({ error: 'Failed to retrieve order' });
+  }
+};
+
 const updateOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -133,4 +172,4 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, updateOrderStatus };
+module.exports = { createOrder, getOrderById, updateOrderStatus };

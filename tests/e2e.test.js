@@ -1,8 +1,25 @@
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 const request = require('supertest');
+const { connectDatabase } = require('../config/database');
 const app = require('../server'); // if server exports app
 const User = require('../models/User');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
+
+let mongoServer;
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  process.env.MONGODB_URI = mongoServer.getUri();
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'e2e-test-secret';
+  await connectDatabase();
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  await mongoServer.stop();
+});
 
 describe('Adept backend e2e flow', () => {
   it('registers a user and returns a JWT token', async () => {
@@ -24,6 +41,55 @@ describe('Adept backend e2e flow', () => {
     });
     expect(typeof response.body.token).toBe('string');
     expect(response.body.token.length).toBeGreaterThan(20);
+  });
+
+  it('returns populated product, supplier, and status timeline data for an associated buyer', async () => {
+    const buyer = await User.create({
+      name: 'Tracking Buyer',
+      email: `tracking-buyer-${Date.now()}@example.com`,
+      password: 'StrongPass123',
+      role: 'buyer',
+    });
+    const supplier = await User.create({
+      name: 'Tracking Supplier',
+      email: `tracking-supplier-${Date.now()}@example.com`,
+      password: 'StrongPass123',
+      role: 'supplier',
+    });
+    const product = await Product.create({
+      supplier: supplier._id,
+      name: 'Tracking Fertilizer',
+      category: 'fertilizer',
+      unit_price: 2500,
+      available_stock: 10,
+    });
+    const order = await Order.create({
+      order_reference: `APT-TRACK-${Date.now()}`,
+      buyer: buyer._id,
+      items: [{ product_id: product._id, quantity: 2, unit_price: 2500 }],
+      total_amount: 5000,
+      delivery_details: { shipping_address: 'Lagos', contact_phone: '+2348000000000' },
+    });
+    const token = require('jsonwebtoken').sign(
+      { id: buyer._id, role: buyer.role },
+      process.env.JWT_SECRET
+    );
+
+    const response = await request(app)
+      .get(`/api/orders/${order._id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.buyer).toMatchObject({ name: 'Tracking Buyer', role: 'buyer' });
+    expect(response.body.items[0].product_id).toMatchObject({ name: 'Tracking Fertilizer' });
+    expect(response.body.items[0].product_id.supplier).toMatchObject({
+      name: 'Tracking Supplier',
+      role: 'supplier',
+    });
+    expect(response.body.status_history[0]).toMatchObject({
+      status: 'pending',
+      changed_by: { name: 'Tracking Buyer' },
+    });
   });
 
   it('serves a live dashboard page that polls the backend data endpoint', async () => {

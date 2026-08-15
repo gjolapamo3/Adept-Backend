@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createOrder, updateOrderStatus } = require('../controllers/orderController');
+const { createOrder, getOrderById, updateOrderStatus } = require('../controllers/orderController');
 const { validateOrderInput } = require('../middleware/validateOrder');
 const { verifyToken } = require('../middleware/auth');
 const { checkRole } = require('../middleware/checkRole');
@@ -12,6 +12,13 @@ router.post(
   checkRole('buyer'), 
   validateOrderInput, 
   createOrder
+);
+
+router.get(
+  '/:id',
+  verifyToken,
+  checkRole('buyer', 'supplier', 'admin'),
+  getOrderById
 );
 
 // Protected Route: Buyer, supplier, or admin can update status, subject to role/FSM checks in the controller
