@@ -59,7 +59,8 @@ const createOrder = async (req, res) => {
           order_reference: existingOrder.order_reference,
           reference: existingOrder.order_reference,
           total_amount: existingOrder.total_amount,
-          items: buildOrderItemsForResponse(existingOrder.items, duplicateCatalog)
+          items: buildOrderItemsForResponse(existingOrder.items, duplicateCatalog),
+          product: buildOrderItemsForResponse(existingOrder.items, duplicateCatalog)[0]?.product || null
         });
       }
     }
@@ -112,22 +113,30 @@ const createOrder = async (req, res) => {
             order_reference: winningOrder.order_reference,
             reference: winningOrder.order_reference,
             total_amount: winningOrder.total_amount,
-            items: buildOrderItemsForResponse(winningOrder.items, duplicateCatalog)
+            items: buildOrderItemsForResponse(winningOrder.items, duplicateCatalog),
+            product: buildOrderItemsForResponse(winningOrder.items, duplicateCatalog)[0]?.product || null
           });
         }
       }
       throw createError;
     }
 
+    const primaryItem = newOrder.items?.[0] || {};
     const responseItems = buildOrderItemsForResponse(newOrder.items, catalog);
 
     return res.status(201).json({
       message: 'Order created successfully. Pending payment.',
       order_id: newOrder._id,
+      orderId: newOrder._id,
       order_reference: newOrder.order_reference,
       reference: newOrder.order_reference,
       total_amount: newOrder.total_amount,
-      items: responseItems
+      amount: newOrder.total_amount,
+      item: primaryItem.product_name || primaryItem.name || 'Urea 46-0-0',
+      quantity: primaryItem.quantity || primaryItem.quantityTons,
+      items: newOrder.items,
+      product: responseItems[0]?.product || null,
+      order: newOrder
     });
 
   } catch (error) {

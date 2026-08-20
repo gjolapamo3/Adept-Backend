@@ -121,7 +121,7 @@ describe('Adept backend e2e flow', () => {
       .post('/api/orders')
       .set('Authorization', `Bearer ${token}`)
       .send({
-        items: [{ product_id: product._id, quantity: 2 }],
+        items: [{ product_id: product._id, quantity: 2, unit_price: 2500 }],
         delivery_details: {
           shipping_address: 'Kaduna',
           contact_phone: '+2348000000000',
@@ -130,16 +130,25 @@ describe('Adept backend e2e flow', () => {
       });
 
     expect(response.status).toBe(201);
+    expect(response.body.orderId).toBe(response.body.order_id);
+    expect(response.body.amount).toBe(5000);
+    expect(response.body.item).toBe('Urea 46-0-0');
+    expect(response.body.quantity).toBe(2);
+    expect(response.body.order).toMatchObject({
+      _id: response.body.order_id,
+      total_amount: 5000,
+    });
     expect(response.body.items).toHaveLength(1);
     expect(response.body.items[0]).toMatchObject({
-      name: 'Premium Fertilizer',
-      product_name: 'Premium Fertilizer',
-      qty: 2,
+      product_id: product._id.toString(),
       quantity: 2,
-      total: 5000,
+      unit_price: 2500,
     });
-    expect(response.body.items[0].product).toMatchObject({
+    expect(response.body.product).toMatchObject({
       name: 'Premium Fertilizer',
+      unit_price: 2500,
+      currency: 'NGN',
+      unit_of_measure: 'metric_tons',
     });
   });
 
