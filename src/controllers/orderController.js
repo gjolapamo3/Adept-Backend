@@ -15,6 +15,7 @@ const createOrder = async (req, res) => {
           message: 'Duplicate order request ignored.',
           order_id: existingOrder._id,
           order_reference: existingOrder.order_reference,
+          reference: existingOrder.order_reference,
           total_amount: existingOrder.total_amount
         });
       }
@@ -30,7 +31,7 @@ const createOrder = async (req, res) => {
 
     const { items: normalizedItems, totalAmount } = buildOrderItemsFromCatalog(items, catalog);
 
-    const orderReference = `APT-ORD-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const orderReference = `ADEPT-REF-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
     let newOrder;
     try {
@@ -58,6 +59,7 @@ const createOrder = async (req, res) => {
             message: 'Duplicate order request ignored.',
             order_id: winningOrder._id,
             order_reference: winningOrder.order_reference,
+            reference: winningOrder.order_reference,
             total_amount: winningOrder.total_amount
           });
         }
@@ -69,6 +71,7 @@ const createOrder = async (req, res) => {
       message: 'Order created successfully. Pending payment.',
       order_id: newOrder._id,
       order_reference: newOrder.order_reference,
+      reference: newOrder.order_reference,
       total_amount: newOrder.total_amount
     });
 
@@ -81,12 +84,11 @@ const createOrder = async (req, res) => {
 const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
+    const orderQuery = mongoose.Types.ObjectId.isValid(id)
+      ? { _id: id }
+      : { order_reference: id };
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'Invalid order id' });
-    }
-
-    const order = await Order.findById(id)
+    const order = await Order.findOne(orderQuery)
       .populate('buyer', 'name email role')
       .populate({
         path: 'items.product_id',
@@ -110,7 +112,10 @@ const getOrderById = async (req, res) => {
       return res.status(403).json({ error: 'You are not associated with this order' });
     }
 
-    return res.status(200).json(order);
+    return res.status(200).json({
+      ...order.toObject(),
+      reference: order.order_reference
+    });
   } catch (error) {
     console.error('Error retrieving order:', error);
     return res.status(500).json({ error: 'Failed to retrieve order' });
@@ -162,6 +167,8 @@ const updateOrderStatus = async (req, res) => {
     return res.status(200).json({
       message: 'Order status updated successfully',
       order_id: order._id,
+      order_reference: order.order_reference,
+      reference: order.order_reference,
       status: order.status,
       status_history: order.status_history
     });
