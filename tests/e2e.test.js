@@ -168,6 +168,33 @@ describe('Adept backend e2e flow', () => {
     });
   });
 
+  it('uses product and supplier alias fallbacks when Mongo product fields are blank', () => {
+    const { normalizeOrderTrackingPayload } = require('../src/controllers/orderController');
+    const order = {
+      order_reference: 'APT-ALIAS-TEST',
+      total_amount: 7800,
+      items: [{
+        product_id: { _id: '64f3f2b5cc321e0109f05d7a', name: '', supplier: null },
+        quantity: 3,
+        qty: 3,
+        unit_price: 2600,
+        product_name: 'Urea 46-0-0',
+        company_name: 'Indorama Eleme Fertilizers',
+        supplier_name: 'Indorama Eleme Fertilizers',
+      }],
+    };
+
+    const normalized = normalizeOrderTrackingPayload(order);
+
+    expect(normalized.item).toBe('Urea 46-0-0');
+    expect(normalized.item_name).toBe('Urea 46-0-0');
+    expect(normalized.supplier).toBe('Indorama Eleme Fertilizers');
+    expect(normalized.supplier_name).toBe('Indorama Eleme Fertilizers');
+    expect(normalized.quantity).toBe(3);
+    expect(normalized.items[0].product_name).toBe('Urea 46-0-0');
+    expect(normalized.items[0].supplier_name).toBe('Indorama Eleme Fertilizers');
+  });
+
   it('serves a live dashboard page that polls the backend data endpoint', async () => {
     const response = await request(app).get('/dashboard/live');
 

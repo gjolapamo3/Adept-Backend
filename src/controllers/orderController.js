@@ -3,6 +3,45 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const { buildOrderItemsFromCatalog } = require('../../services/orderService');
 
+const resolveProductName = (product = null, item = {}) => {
+  const candidates = [
+    product?.name,
+    product?.product_name,
+    product?.title,
+    item?.product_name,
+    item?.item_name,
+    item?.name,
+    item?.title,
+  ];
+
+  const resolved = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+  return resolved ? resolved.trim() : 'Item unavailable';
+};
+
+const resolveSupplierName = (supplier = null, item = {}) => {
+  const supplierObject = supplier && typeof supplier === 'object' ? supplier : null;
+  const candidates = [
+    supplierObject?.company_name,
+    supplierObject?.name,
+    item?.supplier_name,
+    item?.company_name,
+    item?.supplier,
+    supplier,
+  ];
+
+  const resolved = candidates.find((value) => {
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (value && typeof value === 'object') {
+      return Boolean(value.name || value.company_name);
+    }
+    return false;
+  });
+
+  if (!resolved) return 'Supplier unavailable';
+  if (typeof resolved === 'string') return resolved.trim();
+  return resolved.company_name || resolved.name || 'Supplier unavailable';
+};
+
 const buildOrderItemsForResponse = (items = [], catalog = []) => {
   const productMap = new Map(catalog.map((product) => [String(product._id), product]));
 
@@ -11,9 +50,9 @@ const buildOrderItemsForResponse = (items = [], catalog = []) => {
     const quantity = Number(item.quantity ?? item.qty ?? 0);
     const unitPrice = Number(item.unit_price ?? item.unitPrice ?? item.price ?? 0);
     const product = productMap.get(productId) || item.product_id || null;
-    const productName = product?.name || product?.product_name || 'Product';
+    const productName = resolveProductName(product, item);
     const supplier = product?.supplier || item.supplier || null;
-    const supplierName = supplier?.name || supplier?.company_name || 'Supplier unavailable';
+    const supplierName = resolveSupplierName(supplier, item);
     const total = quantity * unitPrice;
 
     return {
@@ -23,8 +62,9 @@ const buildOrderItemsForResponse = (items = [], catalog = []) => {
       product: product ? {
         ...product,
         _id: product._id,
-        name: product.name,
-        product_name: product.name,
+        name: product.name || product.product_name || item.product_name || item.name || productName,
+        product_name: product.name || product.product_name || item.product_name || item.name || productName,
+        supplier: product.supplier || item.supplier || { name: supplierName, company_name: supplierName },
       } : null,
       name: productName,
       product_name: productName,
@@ -47,8 +87,8 @@ const normalizeOrderTrackingPayload = (order) => {
   const normalizedItems = (orderDoc.items || []).map((item) => {
     const product = item.product_id || null;
     const supplier = product?.supplier || item.supplier || null;
-    const productName = item.product_name || item.name || product?.name || product?.product_name || 'Item unavailable';
-    const supplierName = item.supplier_name || supplier?.name || supplier?.company_name || 'Supplier unavailable';
+    const productName = resolveProductName(product, item);
+    const supplierName = resolveSupplierName(supplier, item);
     const quantity = Number(item.quantity ?? item.qty ?? 0);
 
     return {
@@ -66,8 +106,8 @@ const normalizeOrderTrackingPayload = (order) => {
 
   const firstItem = normalizedItems[0] || {};
   const firstProduct = firstItem.product_id || null;
-  const populatedItemName = firstItem.item_name || firstProduct?.name || firstProduct?.product_name || 'Item unavailable';
-  const supplierName = firstItem.supplier_name || firstProduct?.supplier?.name || firstProduct?.supplier?.company_name || 'Supplier unavailable';
+  const populatedItemName = resolveProductName(firstProduct, firstItem);
+  const supplierName = resolveSupplierName(firstProduct?.supplier || firstItem?.supplier || null, firstItem);
   const populatedQuantity = Number(firstItem.quantity ?? firstItem.qty ?? 0);
 
   return {
@@ -328,4 +368,10 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getOrderById, updateOrderStatus };
+module.exports = {
+  createOrder,
+  getOrderById,
+  updateOrderStatus,
+  normalizeOrderTrackingPayload,
+  buildOrderItemsForResponse,
+};
