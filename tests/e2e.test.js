@@ -92,6 +92,57 @@ describe('Adept backend e2e flow', () => {
     });
   });
 
+  it('returns item details with formatter-friendly aliases in the create-order payload', async () => {
+    const buyer = await User.create({
+      name: 'Order Buyer',
+      email: `order-buyer-${Date.now()}@example.com`,
+      password: 'StrongPass123',
+      role: 'buyer',
+    });
+    const supplier = await User.create({
+      name: 'Order Supplier',
+      email: `order-supplier-${Date.now()}@example.com`,
+      password: 'StrongPass123',
+      role: 'supplier',
+    });
+    const product = await Product.create({
+      supplier: supplier._id,
+      name: 'Premium Fertilizer',
+      category: 'fertilizer',
+      unit_price: 2500,
+      available_stock: 10,
+    });
+    const token = require('jsonwebtoken').sign(
+      { id: buyer._id, role: buyer.role },
+      process.env.JWT_SECRET
+    );
+
+    const response = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        items: [{ product_id: product._id, quantity: 2 }],
+        delivery_details: {
+          shipping_address: 'Kaduna',
+          contact_phone: '+2348000000000',
+        },
+        payment_method: 'bank_transfer',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.items).toHaveLength(1);
+    expect(response.body.items[0]).toMatchObject({
+      name: 'Premium Fertilizer',
+      product_name: 'Premium Fertilizer',
+      qty: 2,
+      quantity: 2,
+      total: 5000,
+    });
+    expect(response.body.items[0].product).toMatchObject({
+      name: 'Premium Fertilizer',
+    });
+  });
+
   it('serves a live dashboard page that polls the backend data endpoint', async () => {
     const response = await request(app).get('/dashboard/live');
 

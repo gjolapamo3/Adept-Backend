@@ -3,20 +3,63 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const { buildOrderItemsFromCatalog } = require('../../services/orderService');
 
+const buildOrderItemsForResponse = (items = [], catalog = []) => {
+  const productMap = new Map(catalog.map((product) => [String(product._id), product]));
+
+  return items.map((item) => {
+    const productId = String(item.product_id || item.productId || item._id || item.id);
+    const quantity = Number(item.quantity ?? item.qty ?? 0);
+    const unitPrice = Number(item.unit_price ?? item.unitPrice ?? item.price ?? 0);
+    const product = productMap.get(productId);
+    const productName = product?.name || product?.product_name || 'Product';
+    const total = quantity * unitPrice;
+
+    return {
+      product_id: productId,
+      productId,
+      id: productId,
+      product: product ? {
+        ...product,
+        _id: product._id,
+        name: product.name,
+        product_name: product.name,
+      } : null,
+      name: productName,
+      product_name: productName,
+      qty: quantity,
+      quantity,
+      unit_price: unitPrice,
+      unitPrice,
+      price: unitPrice,
+      total,
+      unit_of_measure: item.unit_of_measure || product?.unit_of_measure || 'metric_tons',
+    };
+  });
+};
+
 const createOrder = async (req, res) => {
   try {
     const { items, delivery_details, payment_method } = req.body;
     const idempotencyKey = req.headers['idempotency-key'];
 
     if (idempotencyKey) {
-      const existingOrder = await Order.findOne({ buyer: req.user.id, idempotency_key: idempotencyKey });
+      const existingOrder = await Order.findOne({ buyer: req.user.id, idempotency_key: idempotencyKey })
+        .populate({
+          path: 'items.product_id',
+          select: 'name supplier unit_price currency unit_of_measure'
+        });
       if (existingOrder) {
+        const duplicateCatalog = existingOrder.items
+          .map((item) => item.product_id)
+          .filter(Boolean);
+
         return res.status(200).json({
           message: 'Duplicate order request ignored.',
           order_id: existingOrder._id,
           order_reference: existingOrder.order_reference,
           reference: existingOrder.order_reference,
-          total_amount: existingOrder.total_amount
+          total_amount: existingOrder.total_amount,
+          items: buildOrderItemsForResponse(existingOrder.items, duplicateCatalog)
         });
       }
     }
@@ -53,26 +96,38 @@ const createOrder = async (req, res) => {
     } catch (createError) {
       // Concurrent duplicate request raced past the pre-check; return the winner's order instead of erroring.
       if (createError?.code === 11000 && idempotencyKey) {
-        const winningOrder = await Order.findOne({ buyer: req.user.id, idempotency_key: idempotencyKey });
+        const winningOrder = await Order.findOne({ buyer: req.user.id, idempotency_key: idempotencyKey })
+          .populate({
+            path: 'items.product_id',
+            select: 'name supplier unit_price currency unit_of_measure'
+          });
         if (winningOrder) {
+          const duplicateCatalog = winningOrder.items
+            .map((item) => item.product_id)
+            .filter(Boolean);
+
           return res.status(200).json({
             message: 'Duplicate order request ignored.',
             order_id: winningOrder._id,
             order_reference: winningOrder.order_reference,
             reference: winningOrder.order_reference,
-            total_amount: winningOrder.total_amount
+            total_amount: winningOrder.total_amount,
+            items: buildOrderItemsForResponse(winningOrder.items, duplicateCatalog)
           });
         }
       }
       throw createError;
     }
 
+    const responseItems = buildOrderItemsForResponse(newOrder.items, catalog);
+
     return res.status(201).json({
       message: 'Order created successfully. Pending payment.',
       order_id: newOrder._id,
       order_reference: newOrder.order_reference,
       reference: newOrder.order_reference,
-      total_amount: newOrder.total_amount
+      total_amount: newOrder.total_amount,
+      items: responseItems
     });
 
   } catch (error) {
