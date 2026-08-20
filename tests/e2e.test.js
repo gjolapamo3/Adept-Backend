@@ -81,9 +81,17 @@ describe('Adept backend e2e flow', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.buyer).toMatchObject({ name: 'Tracking Buyer', role: 'buyer' });
+    expect(response.body.item).toBe('Tracking Fertilizer');
     expect(response.body.item_name).toBe('Tracking Fertilizer');
+    expect(response.body.supplier).toBe('Tracking Supplier');
     expect(response.body.supplier_name).toBe('Tracking Supplier');
     expect(response.body.quantity).toBe(2);
+    expect(response.body.amount).toBe(5000);
+    expect(response.body.order_reference).toBe(order.order_reference);
+    expect(response.body.order).toMatchObject({
+      order_reference: order.order_reference,
+      total_amount: 5000,
+    });
     expect(response.body.items[0].product_id).toMatchObject({ name: 'Tracking Fertilizer' });
     expect(response.body.items[0].product_id.supplier).toMatchObject({
       name: 'Tracking Supplier',
@@ -137,7 +145,10 @@ describe('Adept backend e2e flow', () => {
     expect(response.status).toBe(201);
     expect(response.body.orderId).toBe(response.body.order_id);
     expect(response.body.amount).toBe(5000);
-    expect(response.body.item).toBe('Urea 46-0-0');
+    expect(response.body.item).toBe('Premium Fertilizer');
+    expect(response.body.item_name).toBe('Premium Fertilizer');
+    expect(response.body.supplier).toBe('Order Supplier');
+    expect(response.body.supplier_name).toBe('Order Supplier');
     expect(response.body.quantity).toBe(2);
     expect(response.body.order).toMatchObject({
       _id: response.body.order_id,

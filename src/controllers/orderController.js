@@ -66,17 +66,30 @@ const normalizeOrderTrackingPayload = (order) => {
 
   const firstItem = normalizedItems[0] || {};
   const firstProduct = firstItem.product_id || null;
+  const populatedItemName = firstItem.item_name || firstProduct?.name || firstProduct?.product_name || 'Item unavailable';
   const supplierName = firstItem.supplier_name || firstProduct?.supplier?.name || firstProduct?.supplier?.company_name || 'Supplier unavailable';
+  const populatedQuantity = Number(firstItem.quantity ?? firstItem.qty ?? 0);
 
   return {
+    // Root level aliases for direct consumption.
+    item: populatedItemName,
+    item_name: populatedItemName,
+    product_name: populatedItemName,
+    supplier: supplierName,
+    supplier_name: supplierName,
+    quantity: populatedQuantity,
+    amount: orderDoc.total_amount,
+    order_reference: orderDoc.order_reference,
+    reference: orderDoc.order_reference,
+    // Full document.
+    order: {
+      ...orderDoc,
+      items: normalizedItems,
+      qty: populatedQuantity,
+    },
     ...orderDoc,
     items: normalizedItems,
-    item_name: firstItem.item_name || firstProduct?.name || firstProduct?.product_name || 'Item unavailable',
-    product_name: firstItem.product_name || firstProduct?.name || firstProduct?.product_name || 'Item unavailable',
-    supplier_name: supplierName,
-    quantity: Number(firstItem.quantity ?? firstItem.qty ?? 0),
-    qty: Number(firstItem.quantity ?? firstItem.qty ?? 0),
-    reference: orderDoc.order_reference,
+    qty: populatedQuantity,
   };
 };
 
@@ -89,12 +102,18 @@ const createOrder = async (req, res) => {
       const existingOrder = await Order.findOne({ buyer: req.user.id, idempotency_key: idempotencyKey })
         .populate({
           path: 'items.product_id',
-          select: 'name supplier unit_price currency unit_of_measure'
+          select: 'name supplier unit_price currency unit_of_measure',
+          populate: { path: 'supplier', select: 'name company_name email role' }
         });
       if (existingOrder) {
         const duplicateCatalog = existingOrder.items
           .map((item) => item.product_id)
           .filter(Boolean);
+        const responseItems = buildOrderItemsForResponse(existingOrder.items, duplicateCatalog);
+        const primaryItem = responseItems[0] || {};
+        const itemName = primaryItem.item_name || primaryItem.product_name || primaryItem.name || 'Item unavailable';
+        const supplierName = primaryItem.supplier_name || 'Supplier unavailable';
+        const resolvedQuantity = Number(primaryItem.quantity ?? primaryItem.qty ?? 0);
 
         return res.status(200).json({
           message: 'Duplicate order request ignored.',
@@ -102,14 +121,22 @@ const createOrder = async (req, res) => {
           order_reference: existingOrder.order_reference,
           reference: existingOrder.order_reference,
           total_amount: existingOrder.total_amount,
-          items: buildOrderItemsForResponse(existingOrder.items, duplicateCatalog),
-          product: buildOrderItemsForResponse(existingOrder.items, duplicateCatalog)[0]?.product || null
+          amount: existingOrder.total_amount,
+          item: itemName,
+          item_name: itemName,
+          supplier: supplierName,
+          supplier_name: supplierName,
+          quantity: resolvedQuantity,
+          items: responseItems,
+          product: responseItems[0]?.product || null
         });
       }
     }
 
     const productIds = items.map((item) => item.product_id || item.productId || item._id || item.id);
-    const catalog = await Product.find({ _id: { $in: productIds } }).lean();
+    const catalog = await Product.find({ _id: { $in: productIds } })
+      .populate('supplier', 'name company_name email role')
+      .lean();
 
     if (catalog.length !== productIds.length) {
       const missingIds = productIds.filter((id) => !catalog.some((product) => String(product._id) === String(id)));
@@ -143,12 +170,18 @@ const createOrder = async (req, res) => {
         const winningOrder = await Order.findOne({ buyer: req.user.id, idempotency_key: idempotencyKey })
           .populate({
             path: 'items.product_id',
-            select: 'name supplier unit_price currency unit_of_measure'
+            select: 'name supplier unit_price currency unit_of_measure',
+            populate: { path: 'supplier', select: 'name company_name email role' }
           });
         if (winningOrder) {
           const duplicateCatalog = winningOrder.items
             .map((item) => item.product_id)
             .filter(Boolean);
+          const responseItems = buildOrderItemsForResponse(winningOrder.items, duplicateCatalog);
+          const primaryItem = responseItems[0] || {};
+          const itemName = primaryItem.item_name || primaryItem.product_name || primaryItem.name || 'Item unavailable';
+          const supplierName = primaryItem.supplier_name || 'Supplier unavailable';
+          const resolvedQuantity = Number(primaryItem.quantity ?? primaryItem.qty ?? 0);
 
           return res.status(200).json({
             message: 'Duplicate order request ignored.',
@@ -156,16 +189,25 @@ const createOrder = async (req, res) => {
             order_reference: winningOrder.order_reference,
             reference: winningOrder.order_reference,
             total_amount: winningOrder.total_amount,
-            items: buildOrderItemsForResponse(winningOrder.items, duplicateCatalog),
-            product: buildOrderItemsForResponse(winningOrder.items, duplicateCatalog)[0]?.product || null
+            amount: winningOrder.total_amount,
+            item: itemName,
+            item_name: itemName,
+            supplier: supplierName,
+            supplier_name: supplierName,
+            quantity: resolvedQuantity,
+            items: responseItems,
+            product: responseItems[0]?.product || null
           });
         }
       }
       throw createError;
     }
 
-    const primaryItem = newOrder.items?.[0] || {};
     const responseItems = buildOrderItemsForResponse(newOrder.items, catalog);
+    const primaryItem = responseItems[0] || {};
+    const itemName = primaryItem.item_name || primaryItem.product_name || primaryItem.name || 'Item unavailable';
+    const supplierName = primaryItem.supplier_name || 'Supplier unavailable';
+    const resolvedQuantity = Number(primaryItem.quantity ?? primaryItem.qty ?? 0);
 
     return res.status(201).json({
       message: 'Order created successfully. Pending payment.',
@@ -175,9 +217,12 @@ const createOrder = async (req, res) => {
       reference: newOrder.order_reference,
       total_amount: newOrder.total_amount,
       amount: newOrder.total_amount,
-      item: primaryItem.product_name || primaryItem.name || 'Urea 46-0-0',
-      quantity: primaryItem.quantity || primaryItem.quantityTons,
-      items: newOrder.items,
+      item: itemName,
+      item_name: itemName,
+      supplier: supplierName,
+      supplier_name: supplierName,
+      quantity: resolvedQuantity,
+      items: responseItems,
       product: responseItems[0]?.product || null,
       order: newOrder
     });
