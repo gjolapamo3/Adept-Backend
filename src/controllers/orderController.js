@@ -10,8 +10,10 @@ const buildOrderItemsForResponse = (items = [], catalog = []) => {
     const productId = String(item.product_id || item.productId || item._id || item.id);
     const quantity = Number(item.quantity ?? item.qty ?? 0);
     const unitPrice = Number(item.unit_price ?? item.unitPrice ?? item.price ?? 0);
-    const product = productMap.get(productId);
+    const product = productMap.get(productId) || item.product_id || null;
     const productName = product?.name || product?.product_name || 'Product';
+    const supplier = product?.supplier || item.supplier || null;
+    const supplierName = supplier?.name || supplier?.company_name || 'Supplier unavailable';
     const total = quantity * unitPrice;
 
     return {
@@ -26,6 +28,9 @@ const buildOrderItemsForResponse = (items = [], catalog = []) => {
       } : null,
       name: productName,
       product_name: productName,
+      item_name: productName,
+      supplier: supplier,
+      supplier_name: supplierName,
       qty: quantity,
       quantity,
       unit_price: unitPrice,
@@ -35,6 +40,44 @@ const buildOrderItemsForResponse = (items = [], catalog = []) => {
       unit_of_measure: item.unit_of_measure || product?.unit_of_measure || 'metric_tons',
     };
   });
+};
+
+const normalizeOrderTrackingPayload = (order) => {
+  const orderDoc = order.toObject ? order.toObject() : order;
+  const normalizedItems = (orderDoc.items || []).map((item) => {
+    const product = item.product_id || null;
+    const supplier = product?.supplier || item.supplier || null;
+    const productName = item.product_name || item.name || product?.name || product?.product_name || 'Item unavailable';
+    const supplierName = item.supplier_name || supplier?.name || supplier?.company_name || 'Supplier unavailable';
+    const quantity = Number(item.quantity ?? item.qty ?? 0);
+
+    return {
+      ...item,
+      product_id: product,
+      product_name: productName,
+      item_name: productName,
+      supplier: supplier,
+      supplier_name: supplierName,
+      quantity,
+      qty: quantity,
+      unit_of_measure: item.unit_of_measure || product?.unit_of_measure || 'metric_tons',
+    };
+  });
+
+  const firstItem = normalizedItems[0] || {};
+  const firstProduct = firstItem.product_id || null;
+  const supplierName = firstItem.supplier_name || firstProduct?.supplier?.name || firstProduct?.supplier?.company_name || 'Supplier unavailable';
+
+  return {
+    ...orderDoc,
+    items: normalizedItems,
+    item_name: firstItem.item_name || firstProduct?.name || firstProduct?.product_name || 'Item unavailable',
+    product_name: firstItem.product_name || firstProduct?.name || firstProduct?.product_name || 'Item unavailable',
+    supplier_name: supplierName,
+    quantity: Number(firstItem.quantity ?? firstItem.qty ?? 0),
+    qty: Number(firstItem.quantity ?? firstItem.qty ?? 0),
+    reference: orderDoc.order_reference,
+  };
 };
 
 const createOrder = async (req, res) => {
@@ -176,10 +219,7 @@ const getOrderById = async (req, res) => {
       return res.status(403).json({ error: 'You are not associated with this order' });
     }
 
-    return res.status(200).json({
-      ...order.toObject(),
-      reference: order.order_reference
-    });
+    return res.status(200).json(normalizeOrderTrackingPayload(order));
   } catch (error) {
     console.error('Error retrieving order:', error);
     return res.status(500).json({ error: 'Failed to retrieve order' });

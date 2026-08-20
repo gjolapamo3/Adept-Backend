@@ -81,11 +81,16 @@ describe('Adept backend e2e flow', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.buyer).toMatchObject({ name: 'Tracking Buyer', role: 'buyer' });
+    expect(response.body.item_name).toBe('Tracking Fertilizer');
+    expect(response.body.supplier_name).toBe('Tracking Supplier');
+    expect(response.body.quantity).toBe(2);
     expect(response.body.items[0].product_id).toMatchObject({ name: 'Tracking Fertilizer' });
     expect(response.body.items[0].product_id.supplier).toMatchObject({
       name: 'Tracking Supplier',
       role: 'supplier',
     });
+    expect(response.body.items[0].item_name).toBe('Tracking Fertilizer');
+    expect(response.body.items[0].supplier_name).toBe('Tracking Supplier');
     expect(response.body.status_history[0]).toMatchObject({
       status: 'pending',
       changed_by: { name: 'Tracking Buyer' },
